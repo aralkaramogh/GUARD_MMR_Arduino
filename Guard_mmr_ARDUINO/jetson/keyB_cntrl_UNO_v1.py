@@ -19,11 +19,13 @@ def main(stdscr):
     stdscr.addstr(0, 0, "=== Jetson to Arduino Uno Controller ===")
     stdscr.addstr(2, 0, "Controls:")
     stdscr.addstr(3, 2, "WASD / Arrows : Drive")
-    stdscr.addstr(4, 2, "Space         : STOP")
-    stdscr.addstr(5, 2, "+ / -         : Adjust Speed")
-    stdscr.addstr(6, 2, "Q             : Quit")
+    stdscr.addstr(4, 2, "Space / X     : STOP")
+    stdscr.addstr(5, 2, "Q / Z         : Fwd/Back Speed (+/-)")
+    stdscr.addstr(6, 2, "E / C         : Turn Speed (+/-)")
+    stdscr.addstr(7, 2, "H             : Reset Speeds (Default 10)")
+    stdscr.addstr(8, 2, "Esc           : Quit App")
     
-    stdscr.addstr(8, 0, f"Connecting to {SERIAL_PORT}...")
+    stdscr.addstr(10, 0, f"Connecting to {SERIAL_PORT}...")
     stdscr.refresh()
 
     # Connect to Arduino
@@ -31,10 +33,10 @@ def main(stdscr):
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
         time.sleep(2) # Wait for Arduino auto-reset to finish
-        stdscr.addstr(8, 0, f"Status: Connected to {SERIAL_PORT}      ")
+        stdscr.addstr(10, 0, f"Status: Connected to {SERIAL_PORT}      ")
     except Exception as e:
-        stdscr.addstr(8, 0, f"Error: {str(e)}")
-        stdscr.addstr(10, 0, "Press any key to exit.")
+        stdscr.addstr(10, 0, f"Error: {str(e)}")
+        stdscr.addstr(12, 0, "Press any key to exit.")
         stdscr.nodelay(False)
         stdscr.getch()
         return
@@ -70,13 +72,30 @@ def main(stdscr):
             elif key == ord(' ') or key == ord('x'): # Spacebar or X
                 cmd = 'x'
                 status_text = "STOP"
-            elif key == ord('+') or key == ord('='):
-                cmd = '+'
-                status_text = "SPEED UP"
-            elif key == ord('-') or key == ord('_'):
-                cmd = '-'
-                status_text = "SPEED DOWN"
+            
+            # Speed Controls (Split System)
             elif key == ord('q'):
+                cmd = 'q'
+                status_text = "FWD SPEED UP"
+            elif key == ord('z'):
+                cmd = 'z'
+                status_text = "FWD SPEED DOWN"
+            elif key == ord('e'):
+                cmd = 'e'
+                status_text = "TURN SPEED UP"
+            elif key == ord('c'):
+                cmd = 'c'
+                status_text = "TURN SPEED DOWN"
+            
+            # Reset
+            elif key == ord('h'):
+                cmd = 'h'
+                status_text = "RESET (Speeds -> 10)"
+
+            # Quit App (Use Esc instead of Q)
+            elif key == 27: # ESC key
+                # SAFETY: Stop robot before quitting
+                ser.write(b'x')
                 break
 
             # Send to Arduino
@@ -85,7 +104,7 @@ def main(stdscr):
                 ser.write(cmd.encode())
                 
                 # Update UI
-                stdscr.addstr(10, 0, f"Last Command: {status_text} ({cmd})      ")
+                stdscr.addstr(12, 0, f"Last Command: {status_text} ({cmd})      ")
                 stdscr.refresh()
                 
                 # Optional: Read response from Arduino (Debugging)
@@ -94,17 +113,22 @@ def main(stdscr):
                     try:
                         response = ser.readline().decode('utf-8', errors='ignore').strip()
                         if response:
-                            stdscr.addstr(12, 0, f"Arduino says: {response[:50]}...      ")
+                            stdscr.addstr(14, 0, f"Arduino says: {response[:50]}...      ")
                     except:
                         pass
 
         except Exception as e:
             # Handle serial disconnections gracefully
-            stdscr.addstr(14, 0, f"Runtime Error: {str(e)}")
+            stdscr.addstr(16, 0, f"Runtime Error: {str(e)}")
             break
 
     # Cleanup
     if ser and ser.is_open:
+        # Final safety stop just in case loop broke unexpectedly
+        try:
+            ser.write(b'x') 
+        except:
+            pass
         ser.close()
 
 if __name__ == "__main__":
