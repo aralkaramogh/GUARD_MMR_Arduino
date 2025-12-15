@@ -1,21 +1,24 @@
 /**
- * Skid-steer motor controller for Arduino Uno + JKBLD300 drivers.
- *
- * Overview of key responsibilities and functions:
- * - Pin mapping: PWM and DIR pins for 4 motors (right-front, left-front,
- *   right-back, left-back).
- * - setMotor(index,duty): sets a single motor's direction and PWM (duty -100..100).
- * - setLeftMotorsAll / setRightMotorsAll / setAllMotors: convenience setters.
- * - forward/backward/turnLeft/turnRight(speed): issue motion commands (speed in percent).
- *   These functions apply user-adjustable speeds, then enforce non-serial safety caps.
- * - stopAll(): stops motors (sets PWM to zero or target zero when ramping is enabled).
- * - resetControl(): stops motors and resets forward/backward and turning speeds to 10%.
- * - Speed variables: `forwardBackwardSpeed` and `turningSpeed` are adjustable via serial
- *   (Q/Z for forward/back, E/C for turning). `FORWARD_BACKWARD_CAP` and `TURNING_CAP`
- *   are non-serial-adjustable limits (change in code only).
- * - MOTOR_INVERT[] lets you flip direction per-motor to compensate mirrored wiring.
- * - Serial commands (single-char): W/F,S/B,A/L,D/R to move; X/Space to stop; Q/Z,E/C to
- *   change speeds; H to reset. Motion persists until stopped (single-press behavior).
+ * @brief 4-Motor Skid Steer Control for Arduino Uno + JKBLD300 Drivers
+ * 
+ * HARDWARE:
+ * - MCU: Arduino Uno (5V Logic)
+ * - Drivers: JKBLD300 (Expects 0-5V PWM)
+ * 
+ * PINOUT:
+ * - M1 (Right Front): PWM 3, DIR 4
+ * - M2 (Left Front):  PWM 5, DIR 7
+ * - M3 (Right Back):  PWM 6, DIR 8
+ * - M4 (Left Back):   PWM 9, DIR 12
+ * 
+ * COMMANDS (Serial Control):
+ * Movement:
+ *   W/F - Forward  | S/B - Backward  | A/L - Turn Left  | D/R - Turn Right  | X/Space - Stop
+ * Speed Control:
+ *   Q - Inc Fwd/Back Speed (+10)  | Z - Dec Fwd/Back Speed (-10)
+ *   E - Inc Turn Speed (+10)       | C - Dec Turn Speed (-10)
+ *   H - Reset (stop, Fwd/Back to 10, keep turn speed)
+ * Speed Range: 10-100% | Default: 10%
  */
 
 #include <Arduino.h>
@@ -58,8 +61,16 @@ int forwardBackwardSpeed = 10;  // Desired forward/backward speed (serial-adjust
 int turningSpeed = 10;          // Desired turning speed (serial-adjustable)
 
 // Non-serial-adjustable caps (safety/limit). Change these constants in code only.
-const int FORWARD_BACKWARD_CAP = 30; // max allowed forward/backward percent
+const int FORWARD_BACKWARD_CAP = 40; // max allowed forward/backward percent
 const int TURNING_CAP = 100;          // max allowed turning percent
+
+// Hold-mode: motors remain active only while repeated serial chars arrive.
+// Many serial terminals send repeated characters when a key is held (auto-repeat).
+// We implement a short timeout: if no movement char is received within this
+// interval the motors are stopped automatically.
+unsigned long lastCommandMillis = 0;
+const unsigned long COMMAND_HOLD_TIMEOUT_MS = 200; // milliseconds
+bool movementActive = false;
 
 // ===== Helpers =====
 
@@ -114,6 +125,55 @@ void setAllMotors(int dutyPercent) {
   for (int i = 0; i < MOTOR_COUNT; ++i) setMotor(i, dutyPercent);
 }
 
+// ----- Smooth ramping (non-blocking) -----
+// Per-motor current and target duty percents used to smoothly change speeds
+int targetDuty[MOTOR_COUNT] = {0,0,0,0};
+int currentDuty[MOTOR_COUNT] = {0,0,0,0};
+
+const int RAMP_STEP_PERCENT = 5;         // change per interval (percent)
+const unsigned long RAMP_INTERVAL_MS = 30; // update interval
+unsigned long lastRampMillis = 0;
+
+// Set target for a specific motor (used by motion functions)
+void setTargetMotor(int index, int dutyPercent) {
+  if (index < 0 || index >= MOTOR_COUNT) return;
+  targetDuty[index] = limitDuty(dutyPercent);
+}
+
+void setTargetLeftAll(int dutyPercent) {
+  for (size_t i = 0; i < sizeof(LEFT_MOTORS)/sizeof(LEFT_MOTORS[0]); ++i) {
+    setTargetMotor(LEFT_MOTORS[i], dutyPercent);
+  }
+}
+
+void setTargetRightAll(int dutyPercent) {
+  for (size_t i = 0; i < sizeof(RIGHT_MOTORS)/sizeof(RIGHT_MOTORS[0]); ++i) {
+    setTargetMotor(RIGHT_MOTORS[i], dutyPercent);
+  }
+}
+
+void setTargetAll(int dutyPercent) {
+  for (int i = 0; i < MOTOR_COUNT; ++i) setTargetMotor(i, dutyPercent);
+}
+
+// Call regularly from loop() to update PWM towards targets smoothly
+void updateMotorRamp() {
+  unsigned long now = millis();
+  if (now - lastRampMillis < RAMP_INTERVAL_MS) return;
+  lastRampMillis = now;
+
+  for (int i = 0; i < MOTOR_COUNT; ++i) {
+    int tgt = targetDuty[i];
+    int cur = currentDuty[i];
+    if (cur == tgt) continue;
+    int diff = tgt - cur;
+    int step = (abs(diff) < RAMP_STEP_PERCENT) ? abs(diff) : RAMP_STEP_PERCENT;
+    if (diff > 0) cur += step; else cur -= step;
+    currentDuty[i] = cur;
+    setMotor(i, cur);
+  }
+}
+
 // ===== Motion Functions =====
 
 void forward(int speedPercent) {
@@ -125,8 +185,9 @@ void forward(int speedPercent) {
   // Skid Steer Logic: Usually both sides get Positive speed if wired identically.
   // If motors are mounted mirrored, one side might need negative.
   // Assuming standard wiring where 'Positive' = 'Forward' for that specific motor:
-  setLeftMotorsAll(speedPercent);
-  setRightMotorsAll(speedPercent); 
+  // Set ramp targets (ramped update will apply smoothly)
+  setTargetLeftAll(speedPercent);
+  setTargetRightAll(speedPercent);
   Serial.print("Cmd: Forward | Speed: "); Serial.println(speedPercent);
 }
 
@@ -136,8 +197,9 @@ void backward(int speedPercent) {
   speedPercent = constrain(speedPercent, 0, forwardBackwardSpeed);
   // Enforce non-serial-adjustable safety cap
   speedPercent = min(speedPercent, FORWARD_BACKWARD_CAP);
-  setLeftMotorsAll(-speedPercent);
-  setRightMotorsAll(-speedPercent);
+  // Set ramp targets for backward
+  setTargetLeftAll(-speedPercent);
+  setTargetRightAll(-speedPercent);
   Serial.print("Cmd: Backward | Speed: "); Serial.println(speedPercent);
 }
 
@@ -148,8 +210,8 @@ void turnRight(int speedPercent) {
   // Enforce non-serial-adjustable safety cap
   speedPercent = min(speedPercent, TURNING_CAP);
   // Skid Steer Right: Left moves Forward (+), Right moves Backward (-)
-  setLeftMotorsAll(speedPercent);
-  setRightMotorsAll(-speedPercent);
+  setTargetLeftAll(speedPercent);
+  setTargetRightAll(-speedPercent);
   Serial.print("Cmd: Right | Speed: "); Serial.println(speedPercent);
 }
 
@@ -160,22 +222,22 @@ void turnLeft(int speedPercent) {
   // Enforce non-serial-adjustable safety cap
   speedPercent = min(speedPercent, TURNING_CAP);
   // Skid Steer Left: Left moves Backward (-), Right moves Forward (+)
-  setLeftMotorsAll(-speedPercent);
-  setRightMotorsAll(speedPercent);
+  setTargetLeftAll(-speedPercent);
+  setTargetRightAll(speedPercent);
   Serial.print("Cmd: Left | Speed: "); Serial.println(speedPercent);
 }
 
 void stopAll() {
-  setAllMotors(0);
+  // Smooth stop: set targets to zero and let ramping bring motors to rest
+  setTargetAll(0);
   Serial.println("Cmd: Stop");
 }
 
 void resetControl() {
   stopAll();
   forwardBackwardSpeed = 10;
-  // Reset both forward/backward and turning speeds to defaults
-  turningSpeed = 10;
-  Serial.println("Reset: Forward/Backward and Turning speeds reset to 10.");
+  // turningSpeed remains unchanged
+  Serial.println("Reset: Forward/Backward speed reset to 10. Turning speed unchanged.");
 }
 
 // ===== Setup and Loop =====
@@ -199,7 +261,7 @@ void setup() {
   Serial.println("Speed Controls:");
   Serial.println("  Q/Z - Increase/Decrease Forward/Backward Speed (user)");
   Serial.println("  E/C - Increase/Decrease Turning Speed (user)");
-  Serial.println("  H - Reset (stop, Fwd/Back -> 10, Turning -> 10)");
+  Serial.println("  H - Reset (stop, Fwd/Back -> 10, keep turning)");
   Serial.print("Initial Forward/Backward Speed (user): "); Serial.println(forwardBackwardSpeed);
   Serial.print("Initial Turning Speed (user): "); Serial.println(turningSpeed);
   Serial.print("Forward/Backward Cap (non-serial): "); Serial.println(FORWARD_BACKWARD_CAP);
@@ -222,29 +284,42 @@ void loop() {
       case 'w': 
       case 'W':
       case 'f': 
+        // Start/refresh forward motion; will stop after timeout if no further
+        // repeated chars are received (key released on terminal).
         digitalWrite(LED_PIN, HIGH);
         forward(forwardBackwardSpeed);
+        movementActive = true;
+        lastCommandMillis = millis();
         break;
 
       case 's': 
       case 'S':
       case 'b': 
+        // Start/refresh backward motion
         digitalWrite(LED_PIN, HIGH);
         backward(forwardBackwardSpeed);
+        movementActive = true;
+        lastCommandMillis = millis();
         break;
 
       case 'a': 
       case 'A':
       case 'l': 
+        // Start/refresh left turn
         digitalWrite(LED_PIN, HIGH);
         turnLeft(turningSpeed);
+        movementActive = true;
+        lastCommandMillis = millis();
         break;
 
       case 'd': 
       case 'D':
       case 'r': 
+        // Start/refresh right turn
         digitalWrite(LED_PIN, HIGH);
         turnRight(turningSpeed);
+        movementActive = true;
+        lastCommandMillis = millis();
         break;
 
       // --- Stop ---
@@ -295,5 +370,13 @@ void loop() {
       default:
         break;
     }
+  }
+
+  // If movement was activated by recent serial input but no new movement
+  // characters arrived within the timeout window, stop motors.
+  if (movementActive && (millis() - lastCommandMillis > COMMAND_HOLD_TIMEOUT_MS)) {
+    movementActive = false;
+    stopAll();
+    digitalWrite(LED_PIN, LOW);
   }
 }
