@@ -72,6 +72,13 @@ def main(stdscr):
                     m = re.search(r'Speed:\s*(\-?\d+)', line)
                     if m:
                         last_motion_speed = int(m.group(1))
+                    # Parse Reset messages like: "Reset: Forward/Backward and Turning speeds reset to 10."
+                    m = re.search(r'Reset.*reset to\s*(\d+)', line, re.IGNORECASE)
+                    if m:
+                        val = int(m.group(1))
+                        forward_speed = val
+                        turn_speed = val
+                        last_motion_speed = None
                     # Update the compact speed display
                     stdscr.addstr(16, 0, f"Fwd Speed: {forward_speed if forward_speed is not None else '--':>3}%   Turn: {turn_speed if turn_speed is not None else '--':>3}%   ")
                     if last_motion_speed is not None:
