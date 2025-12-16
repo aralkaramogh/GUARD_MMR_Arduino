@@ -15,8 +15,8 @@
  * Movement:
  *   W/F - Forward  | S/B - Backward  | A/L - Turn Left  | D/R - Turn Right  | X/Space - Stop
  * Speed Control:
- *   Q - Inc Fwd/Back Speed (+10)  | Z - Dec Fwd/Back Speed (-10)
- *   E - Inc Turn Speed (+10)       | C - Dec Turn Speed (-10)
+ *   Q - Inc Fwd/Back Speed (+5)  | Z - Dec Fwd/Back Speed (-5)
+ *   E - Inc Turn Speed (+5)       | C - Dec Turn Speed (-5)
  *   H - Reset (stop, Fwd/Back to 10, keep turn speed)
  * Speed Range: 10-100% | Default: 10%
  */
@@ -340,30 +340,30 @@ void loop() {
       // --- Forward/Backward Speed Control ---
       case 'q':
       case 'Q':
-        forwardBackwardSpeed += 10;
+        forwardBackwardSpeed += 5;
         if (forwardBackwardSpeed > FORWARD_BACKWARD_CAP) forwardBackwardSpeed = FORWARD_BACKWARD_CAP;
         Serial.print("Forward/Backward Speed Increased: "); Serial.println(forwardBackwardSpeed);
         break;
 
       case 'z':
       case 'Z':
-        forwardBackwardSpeed -= 10;
-        if (forwardBackwardSpeed < 10) forwardBackwardSpeed = 10;
+        forwardBackwardSpeed -= 5;
+        if (forwardBackwardSpeed < 5) forwardBackwardSpeed = 5;
         Serial.print("Forward/Backward Speed Decreased: "); Serial.println(forwardBackwardSpeed);
         break;
 
       // --- Turning Speed Control ---
       case 'e':
       case 'E':
-        turningSpeed += 10;
+        turningSpeed += 5;
         if (turningSpeed > TURNING_CAP) turningSpeed = TURNING_CAP;
         Serial.print("Turning Speed Increased: "); Serial.println(turningSpeed);
         break;
 
       case 'c':
       case 'C':
-        turningSpeed -= 10;
-        if (turningSpeed < 10) turningSpeed = 10;
+        turningSpeed -= 5;
+        if (turningSpeed < 5) turningSpeed = 5;
         Serial.print("Turning Speed Decreased: "); Serial.println(turningSpeed);
         break;
 

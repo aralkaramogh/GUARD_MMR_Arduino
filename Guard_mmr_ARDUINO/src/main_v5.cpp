@@ -58,7 +58,7 @@ int forwardBackwardSpeed = 10;  // Desired forward/backward speed (serial-adjust
 int turningSpeed = 10;          // Desired turning speed (serial-adjustable)
 
 // Non-serial-adjustable caps (safety/limit). Change these constants in code only.
-const int FORWARD_BACKWARD_CAP = 30; // max allowed forward/backward percent
+const int FORWARD_BACKWARD_CAP = 25; // max allowed forward/backward percent
 const int TURNING_CAP = 100;          // max allowed turning percent
 
 // ===== Helpers =====
@@ -265,30 +265,30 @@ void loop() {
       // --- Forward/Backward Speed Control ---
       case 'q':
       case 'Q':
-        forwardBackwardSpeed += 10;
+        forwardBackwardSpeed += 5;
         if (forwardBackwardSpeed > FORWARD_BACKWARD_CAP) forwardBackwardSpeed = FORWARD_BACKWARD_CAP;
         Serial.print("Forward/Backward Speed Increased: "); Serial.println(forwardBackwardSpeed);
         break;
 
       case 'z':
       case 'Z':
-        forwardBackwardSpeed -= 10;
-        if (forwardBackwardSpeed < 10) forwardBackwardSpeed = 10;
+        forwardBackwardSpeed -= 5;
+        if (forwardBackwardSpeed < 5) forwardBackwardSpeed = 5;
         Serial.print("Forward/Backward Speed Decreased: "); Serial.println(forwardBackwardSpeed);
         break;
 
       // --- Turning Speed Control ---
       case 'e':
       case 'E':
-        turningSpeed += 10;
+        turningSpeed += 5;
         if (turningSpeed > TURNING_CAP) turningSpeed = TURNING_CAP;
         Serial.print("Turning Speed Increased: "); Serial.println(turningSpeed);
         break;
 
       case 'c':
       case 'C':
-        turningSpeed -= 10;
-        if (turningSpeed < 10) turningSpeed = 10;
+        turningSpeed -= 5;
+        if (turningSpeed < 5) turningSpeed = 5;
         Serial.print("Turning Speed Decreased: "); Serial.println(turningSpeed);
         break;
 

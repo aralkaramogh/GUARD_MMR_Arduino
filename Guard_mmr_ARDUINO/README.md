@@ -18,10 +18,10 @@ Operating Keys (Serial)
 | A / a / L   | Turn left at `turningSpeed`%.
 | D / d / R   | Turn right at `turningSpeed`%.
 | X / (space) | Stop all motors immediately.
-| Q / q       | Increase forward/back speed by +10 (clamped to `FORWARD_BACKWARD_CAP`).
-| Z / z       | Decrease forward/back speed by -10 (min 10).
-| E / e       | Increase turning speed by +10 (clamped to `TURNING_CAP`).
-| C / c       | Decrease turning speed by -10 (min 10).
+| Q / q       | Increase forward/back speed by +5 (clamped to `FORWARD_BACKWARD_CAP`).
+| Z / z       | Decrease forward/back speed by -5 (min 5).
+| E / e       | Increase turning speed by +5 (clamped to `TURNING_CAP`).
+| C / c       | Decrease turning speed by -5 (min 5).
 | H / h       | Reset: stop + set `forwardBackwardSpeed = 10`, `turningSpeed = 10`.
 
 Recommended presets (edit in `src/main_v2.cpp`)

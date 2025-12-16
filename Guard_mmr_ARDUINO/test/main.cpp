@@ -201,14 +201,14 @@ void loop() {
 
       // --- Speed Control ---
       case '+':
-        currentSpeed += 10;
+        currentSpeed += 5;
         if (currentSpeed > 100) currentSpeed = 100;
         Serial.print("Speed Increased: "); Serial.println(currentSpeed);
         break;
 
       case '-':
-        currentSpeed -= 10;
-        if (currentSpeed < 10) currentSpeed = 10; 
+        currentSpeed -= 5;
+        if (currentSpeed < 5) currentSpeed = 5; 
         Serial.print("Speed Decreased: "); Serial.println(currentSpeed);
         break;
 
