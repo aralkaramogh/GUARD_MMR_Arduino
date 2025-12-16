@@ -147,16 +147,47 @@ def main(stdscr):
                 # Update UI
                 stdscr.addstr(12, 0, f"Last Command: {status_text} ({cmd})      ")
                 stdscr.refresh()
-                
-                # Optional: Read response from Arduino (Debugging)
-                # Note: Reading might slow down loop if Arduino is spamming text
-                if ser.in_waiting > 0:
+
+                # Try to capture any immediate response (useful for Reset which prints the new speeds)
+                timeout = time.time() + 0.5  # wait up to 0.5s for reply
+                while time.time() < timeout:
+                    if ser.in_waiting == 0:
+                        time.sleep(0.01)
+                        continue
                     try:
                         response = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if response:
-                            stdscr.addstr(14, 0, f"Arduino says: {response[:50]}...      ")
-                    except:
-                        pass
+                    except Exception:
+                        break
+                    if not response:
+                        continue
+                    stdscr.addstr(14, 0, f"Arduino: {response[:70]:70}  ")
+                    # Parse same messages we handle in the inbound block
+                    m = re.search(r'Forward/Backward Speed[^0-9-]*(\-?\d+)', response)
+                    if m:
+                        forward_speed = int(m.group(1))
+                    m = re.search(r'Initial Forward/Backward Speed[^0-9-]*(\-?\d+)', response)
+                    if m:
+                        forward_speed = int(m.group(1))
+                    m = re.search(r'Turning Speed[^0-9-]*(\-?\d+)', response)
+                    if m:
+                        turn_speed = int(m.group(1))
+                    m = re.search(r'Speed:\s*(\-?\d+)', response)
+                    if m:
+                        last_motion_speed = int(m.group(1))
+                    m = re.search(r'Reset.*reset to\s*(\d+)', response, re.IGNORECASE)
+                    if m:
+                        val = int(m.group(1))
+                        forward_speed = val
+                        turn_speed = val
+                        last_motion_speed = None
+                    # Update compact display immediately
+                    stdscr.addstr(16, 0, f"Fwd Speed: {forward_speed if forward_speed is not None else '--':>3}%   Turn: {turn_speed if turn_speed is not None else '--':>3}%   ")
+                    if last_motion_speed is not None:
+                        stdscr.addstr(17, 0, f"Last Cmd Speed: {last_motion_speed:>3}   ")
+                    stdscr.refresh()
+                    # Stop early if we parsed a reset message so UI is updated quickly
+                    if re.search(r'Reset.*reset to\s*(\d+)', response, re.IGNORECASE):
+                        break
 
         except Exception as e:
             # Handle serial disconnections gracefully
