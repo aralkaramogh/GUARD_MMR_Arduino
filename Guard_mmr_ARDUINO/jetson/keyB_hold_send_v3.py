@@ -279,13 +279,18 @@ def main(stdscr):
             # PHASE 3: SEND COMMAND TO ARDUINO
             # ========================================
             # Only send if a command was mapped above.
+            # ========================================
+            # PHASE 3: SEND COMMAND TO ARDUINO
+            # ========================================
+            # Only send if a command was mapped above.
             if cmd_to_send:
                 ser.write(cmd_to_send.encode())
                 stdscr.addstr(12, 0, f"Last Command: {status_text} ({cmd_to_send})      ")
                 
-                # Try to capture immediate response (Reset, speed changes)
-                if not is_movement:  # Only wait for non-movement commands
-                    timeout = time.time() + 0.3
+                # For non-movement commands, wait for and parse Arduino response
+                # (Movement commands don't block to ensure smooth hold-to-move)
+                if not is_movement:  # Only wait for speed/reset/stop
+                    timeout = time.time() + 0.3  # Wait up to 0.3 seconds
                     while time.time() < timeout:
                         if ser.in_waiting == 0:
                             time.sleep(0.01)
@@ -296,8 +301,10 @@ def main(stdscr):
                             break
                         if not response:
                             continue
+                        # Display and parse the response
                         stdscr.addstr(14, 0, f"Arduino: {response[:70]:70}  ")
-                        # Parse response
+                        
+                        # Parse speed values from response
                         m = re.search(r'Forward/Backward Speed[^0-9-]*(\-?\d+)', response)
                         if m:
                             forward_speed = int(m.group(1))
@@ -310,26 +317,31 @@ def main(stdscr):
                             forward_speed = val
                             turn_speed = val
                             last_motion_speed = None
-                        # Update display
+                        
+                        # Update speed display
                         stdscr.addstr(16, 0, f"Fwd Speed: {forward_speed if forward_speed is not None else '--':>3}%   Turn: {turn_speed if turn_speed is not None else '--':>3}%   ")
                         if last_motion_speed is not None:
                             stdscr.addstr(17, 0, f"Last Cmd Speed: {last_motion_speed:>3}   ")
                         stdscr.refresh()
-                        # Exit early on reset message
+                        
+                        # Exit early if we got a reset message to avoid unnecessary waits
                         if re.search(r'Reset.*reset to\s*(\d+)', response, re.IGNORECASE):
                             break
 
             stdscr.refresh()
-            time.sleep(0.02)  # Small sleep to reduce CPU usage
+            time.sleep(0.02)  # Small sleep to prevent CPU hogging during the loop
 
         except Exception as e:
-            # Handle serial disconnections gracefully
+            # Handle any runtime errors (e.g., serial disconnection)
             stdscr.addstr(18, 0, f"Runtime Error: {str(e)}")
             break
 
-    # Cleanup
+    # ========================================
+    # CLEANUP ON EXIT
+    # ========================================
+    # Ensure robot is stopped and serial port is closed properly
     if ser and ser.is_open:
-        # Final safety stop
+        # Final safety stop before closing connection
         try:
             ser.write(b'x') 
         except:
@@ -337,6 +349,10 @@ def main(stdscr):
         ser.close()
 
 if __name__ == "__main__":
+    # ========================================
+    # APPLICATION ENTRY POINT
+    # ========================================
+    # Initialize curses (terminal UI) and run the main controller loop
     try:
         curses.wrapper(main)
     except Exception as e:
