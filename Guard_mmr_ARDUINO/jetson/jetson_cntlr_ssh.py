@@ -45,6 +45,7 @@ def main(stdscr):
     last_key = -1
     last_valid_key_time = 0
     is_moving = False
+    last_sent_movement_cmd = None  # Track last sent movement command to avoid re-sending
     
     # Feedback variables
     fwd_speed = 10
@@ -75,6 +76,7 @@ def main(stdscr):
             
             cmd_to_send = None
             status_text = ""
+            is_movement_cmd = False  # Track if this is a movement command
 
             # --- logic for Hold-to-Run ---
             # If a key is pressed
@@ -86,17 +88,21 @@ def main(stdscr):
                 if key == ord('w') or key == curses.KEY_UP:
                     cmd_to_send = 'w'
                     status_text = "FORWARD"
+                    is_movement_cmd = True
                 elif key == ord('s') or key == curses.KEY_DOWN:
                     cmd_to_send = 's'
                     status_text = "BACKWARD"
+                    is_movement_cmd = True
                 elif key == ord('a') or key == curses.KEY_LEFT:
                     cmd_to_send = 'a'
                     status_text = "LEFT"
+                    is_movement_cmd = True
                 elif key == ord('d') or key == curses.KEY_RIGHT:
                     cmd_to_send = 'd'
                     status_text = "RIGHT"
+                    is_movement_cmd = True
                 
-                # Instant Commands (Speed/Reset)
+                # Instant Commands (Speed/Reset) - Always send these
                 elif key == ord('q'): cmd_to_send = 'q'; status_text = "SPEED UP"
                 elif key == ord('z'): cmd_to_send = 'z'; status_text = "SPEED DOWN"
                 elif key == ord('e'): cmd_to_send = 'e'; status_text = "TURN UP"
@@ -119,9 +125,22 @@ def main(stdscr):
                     cmd_to_send = 'x'
                     status_text = "AUTO-STOP"
                     is_moving = False
+                    last_sent_movement_cmd = None  # Clear cache on stop
 
-            # 3. Send Command (Only if changed or strictly needed)
+            # 3. Send Command - Only send if: (a) it's a new movement, (b) it's NOT a movement (speed/reset), or (c) it's stop
+            send_now = False
             if cmd_to_send:
+                if is_movement_cmd:
+                    # Only send if this movement is different from last sent movement
+                    if cmd_to_send != last_sent_movement_cmd:
+                        send_now = True
+                        last_sent_movement_cmd = cmd_to_send
+                else:
+                    # Non-movement commands (speed, reset, stop) are always sent
+                    send_now = True
+                    last_sent_movement_cmd = None  # Reset movement cache on non-movement cmd
+
+            if send_now:
                 ser.write(cmd_to_send.encode())
                 last_sent_cmd = f"{status_text} ({cmd_to_send})"
                 # Clear input buffer to prevent lag build-up
