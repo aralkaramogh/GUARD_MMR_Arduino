@@ -123,6 +123,7 @@ def main(stdscr):
     currently_moving_cmd = None  # Currently active movement command (w/s/a/d) or None
     last_key_time = time.time()  # Track when last valid key was pressed
     key_release_timeout = 0.15   # Time (seconds) before confirming key release and stopping
+    movement_sent_time = None    # Timestamp when movement was last sent (prevents immediate stop after send)
     
     # ===== PARSED SPEEDS FROM ARDUINO FEEDBACK =====
     # These are updated as Arduino sends serial messages about speed changes
@@ -200,10 +201,13 @@ def main(stdscr):
                 # In non-blocking mode, getch() returns -1 very quickly.
                 # To avoid rapid stop-start cycles, we use a timeout:
                 # Only send STOP if key_release_timeout has passed since last valid key.
-                if currently_moving_cmd is not None and (current_time - last_key_time > key_release_timeout):
+                # GUARD: Skip timeout check for 50ms after movement sent (prevents immediate stop jerk).
+                skip_stop_check = (movement_sent_time is not None and (current_time - movement_sent_time) < 0.05)
+                if currently_moving_cmd is not None and (current_time - last_key_time > key_release_timeout) and not skip_stop_check:
                     ser.write(b'x')  # Send stop command
                     stdscr.addstr(12, 0, f"Last Command: KEY RELEASED -> STOP      ")
                     currently_moving_cmd = None  # Clear active command
+                    movement_sent_time = None
                 stdscr.refresh()
                 time.sleep(0.02)  # Reduce CPU usage during idle wait
                 continue
@@ -218,6 +222,11 @@ def main(stdscr):
             
             # Update timestamp: a key was just pressed
             last_key_time = current_time
+            
+            # Clear movement_sent_time guard: if user is still holding, we got a real keypress
+            # (not just getch() returning -1), so it's safe to check for timeout again
+            if movement_sent_time is not None and (current_time - movement_sent_time) > 0.05:
+                movement_sent_time = None
 
             # --- MOVEMENT COMMANDS (W/A/S/D) ---
             # These are sent ONLY when the key changes state (e.g., idle->W, W->A, etc.)
@@ -229,24 +238,28 @@ def main(stdscr):
                     status_text = "FORWARD (hold)"
                     is_movement = True
                     currently_moving_cmd = 'w'
+                    movement_sent_time = current_time  # Mark when movement was sent
             elif key == ord('s') or key == curses.KEY_DOWN:
                 if currently_moving_cmd != 's':
                     cmd_to_send = 's'
                     status_text = "BACKWARD (hold)"
                     is_movement = True
                     currently_moving_cmd = 's'
+                    movement_sent_time = current_time
             elif key == ord('a') or key == curses.KEY_LEFT:
                 if currently_moving_cmd != 'a':
                     cmd_to_send = 'a'
                     status_text = "LEFT TURN (hold)"
                     is_movement = True
                     currently_moving_cmd = 'a'
+                    movement_sent_time = current_time
             elif key == ord('d') or key == curses.KEY_RIGHT:
                 if currently_moving_cmd != 'd':
                     cmd_to_send = 'd'
                     status_text = "RIGHT TURN (hold)"
                     is_movement = True
                     currently_moving_cmd = 'd'
+                    movement_sent_time = current_time
             
             # --- INSTANT COMMANDS (Q/Z/E/C/H) ---
             # Speed and reset commands are ALWAYS sent (no caching).
