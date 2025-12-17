@@ -215,6 +215,9 @@ def main(stdscr):
             cmd_to_send = None
             status_text = ""
             is_movement = False
+            
+            # Update timestamp: a key was just pressed
+            last_key_time = current_time
 
             # --- MOVEMENT COMMANDS (W/A/S/D) ---
             # These are sent ONLY when the key changes state (e.g., idle->W, W->A, etc.)
