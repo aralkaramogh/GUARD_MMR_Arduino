@@ -123,7 +123,6 @@ def main(stdscr):
     currently_moving_cmd = None  # Currently active movement command (w/s/a/d) or None
     last_key_time = time.time()  # Track when last valid key was pressed
     key_release_timeout = 0.15   # Time (seconds) before confirming key release and stopping
-    movement_sent_time = None    # Timestamp when movement was last sent (prevents immediate stop after send)
     
     # ===== PARSED SPEEDS FROM ARDUINO FEEDBACK =====
     # These are updated as Arduino sends serial messages about speed changes
@@ -201,17 +200,7 @@ def main(stdscr):
                 # In non-blocking mode, getch() returns -1 very quickly.
                 # To avoid rapid stop-start cycles, we use a timeout:
                 # Only send STOP if key_release_timeout has passed since last valid key.
-                # GUARD: For 50ms after movement, skip the timeout check (prevents initial jerk).
-                if movement_sent_time is not None:
-                    if (current_time - movement_sent_time) < 0.05:
-                        # Guard active: skip STOP check for 50ms after send
-                        pass
-                    else:
-                        # Guard expired: clear it so normal timeout can work
-                        movement_sent_time = None
-                
-                # Now check for stop (only if movement_sent_time guard is cleared)
-                if currently_moving_cmd is not None and movement_sent_time is None and (current_time - last_key_time > key_release_timeout):
+                if currently_moving_cmd is not None and (current_time - last_key_time > key_release_timeout):
                     ser.write(b'x')  # Send stop command
                     stdscr.addstr(12, 0, f"Last Command: KEY RELEASED -> STOP      ")
                     currently_moving_cmd = None  # Clear active command
@@ -229,10 +218,6 @@ def main(stdscr):
             
             # Update timestamp: a key was just pressed
             last_key_time = current_time
-            
-            # Clear movement guard ONLY when user switches movement direction or presses an instant command.
-            # This keeps the guard active during the entire hold, preventing false release detections.
-            # The guard will be cleared explicitly in the movement/instant command blocks below.
 
             # --- MOVEMENT COMMANDS (W/A/S/D) ---
             # These are sent ONLY when the key changes state (e.g., idle->W, W->A, etc.)
@@ -244,33 +229,28 @@ def main(stdscr):
                     status_text = "FORWARD (hold)"
                     is_movement = True
                     currently_moving_cmd = 'w'
-                    movement_sent_time = current_time  # Mark when movement was sent (guard stays active)
             elif key == ord('s') or key == curses.KEY_DOWN:
                 if currently_moving_cmd != 's':
                     cmd_to_send = 's'
                     status_text = "BACKWARD (hold)"
                     is_movement = True
                     currently_moving_cmd = 's'
-                    movement_sent_time = current_time
             elif key == ord('a') or key == curses.KEY_LEFT:
                 if currently_moving_cmd != 'a':
                     cmd_to_send = 'a'
                     status_text = "LEFT TURN (hold)"
                     is_movement = True
                     currently_moving_cmd = 'a'
-                    movement_sent_time = current_time
             elif key == ord('d') or key == curses.KEY_RIGHT:
                 if currently_moving_cmd != 'd':
                     cmd_to_send = 'd'
                     status_text = "RIGHT TURN (hold)"
                     is_movement = True
                     currently_moving_cmd = 'd'
-                    movement_sent_time = current_time
             
             # --- INSTANT COMMANDS (Q/Z/E/C/H) ---
             # Speed and reset commands are ALWAYS sent (no caching).
             # These work even during movement (speed change on-the-fly).
-            # Clear the movement guard when an instant command is pressed (allows stop detection after).
             elif key == ord('q'):
                 cmd_to_send = 'q'
                 status_text = "FWD SPEED UP"
