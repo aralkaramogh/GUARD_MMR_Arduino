@@ -121,6 +121,8 @@ def main(stdscr):
     # Track the currently active movement command to avoid re-sending the same one
     # (This is the KEY to smooth motion - no repeated "forward" commands)
     currently_moving_cmd = None  # Currently active movement command (w/s/a/d) or None
+    last_key_time = time.time()  # Track when last valid key was pressed
+    key_release_timeout = 0.15   # Time (seconds) before confirming key release and stopping
     
     # ===== PARSED SPEEDS FROM ARDUINO FEEDBACK =====
     # These are updated as Arduino sends serial messages about speed changes
@@ -189,19 +191,21 @@ def main(stdscr):
             # ========================================
             # Detect key presses. Returns -1 if no key pressed (non-blocking).
             key = stdscr.getch()
+            current_time = time.time()
             
             if key == -1:
                 # ========================================
-                # NO KEY PRESSED: DETECT RELEASE (Smooth Stop)
+                # NO KEY PRESSED: CHECK FOR DELAYED RELEASE
                 # ========================================
-                # When getch() returns -1, no key is currently held.
-                # If we were previously moving, send STOP command now.
-                if currently_moving_cmd is not None:
+                # In non-blocking mode, getch() returns -1 very quickly.
+                # To avoid rapid stop-start cycles, we use a timeout:
+                # Only send STOP if key_release_timeout has passed since last valid key.
+                if currently_moving_cmd is not None and (current_time - last_key_time > key_release_timeout):
                     ser.write(b'x')  # Send stop command
                     stdscr.addstr(12, 0, f"Last Command: KEY RELEASED -> STOP      ")
                     currently_moving_cmd = None  # Clear active command
                 stdscr.refresh()
-                time.sleep(0.05)  # Reduce CPU usage during idle wait
+                time.sleep(0.02)  # Reduce CPU usage during idle wait
                 continue
 
             # ========================================
