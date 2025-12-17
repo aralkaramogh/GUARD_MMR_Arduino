@@ -201,13 +201,12 @@ def main(stdscr):
                 # In non-blocking mode, getch() returns -1 very quickly.
                 # To avoid rapid stop-start cycles, we use a timeout:
                 # Only send STOP if key_release_timeout has passed since last valid key.
-                # GUARD: Skip timeout check for 50ms after movement sent (prevents immediate stop jerk).
-                skip_stop_check = (movement_sent_time is not None and (current_time - movement_sent_time) < 0.05)
-                if currently_moving_cmd is not None and (current_time - last_key_time > key_release_timeout) and not skip_stop_check:
+                # GUARD: If movement was just sent, keep it alive (don't send stop yet).
+                # The guard stays active until user explicitly changes direction/presses another command.
+                if currently_moving_cmd is not None and movement_sent_time is None and (current_time - last_key_time > key_release_timeout):
                     ser.write(b'x')  # Send stop command
                     stdscr.addstr(12, 0, f"Last Command: KEY RELEASED -> STOP      ")
                     currently_moving_cmd = None  # Clear active command
-                    movement_sent_time = None
                 stdscr.refresh()
                 time.sleep(0.02)  # Reduce CPU usage during idle wait
                 continue
@@ -223,10 +222,9 @@ def main(stdscr):
             # Update timestamp: a key was just pressed
             last_key_time = current_time
             
-            # Clear movement_sent_time guard: if user is still holding, we got a real keypress
-            # (not just getch() returning -1), so it's safe to check for timeout again
-            if movement_sent_time is not None and (current_time - movement_sent_time) > 0.05:
-                movement_sent_time = None
+            # Clear movement guard ONLY when user switches movement direction or presses an instant command.
+            # This keeps the guard active during the entire hold, preventing false release detections.
+            # The guard will be cleared explicitly in the movement/instant command blocks below.
 
             # --- MOVEMENT COMMANDS (W/A/S/D) ---
             # These are sent ONLY when the key changes state (e.g., idle->W, W->A, etc.)
@@ -238,7 +236,7 @@ def main(stdscr):
                     status_text = "FORWARD (hold)"
                     is_movement = True
                     currently_moving_cmd = 'w'
-                    movement_sent_time = current_time  # Mark when movement was sent
+                    movement_sent_time = current_time  # Mark when movement was sent (guard stays active)
             elif key == ord('s') or key == curses.KEY_DOWN:
                 if currently_moving_cmd != 's':
                     cmd_to_send = 's'
@@ -264,31 +262,38 @@ def main(stdscr):
             # --- INSTANT COMMANDS (Q/Z/E/C/H) ---
             # Speed and reset commands are ALWAYS sent (no caching).
             # These work even during movement (speed change on-the-fly).
+            # Clear the movement guard when an instant command is pressed (allows stop detection after).
             elif key == ord('q'):
                 cmd_to_send = 'q'
                 status_text = "FWD SPEED UP"
+                movement_sent_time = None  # Clear guard: allow stop detection after instant command
                 currently_moving_cmd = None  # Clear movement cache
             elif key == ord('z'):
                 cmd_to_send = 'z'
                 status_text = "FWD SPEED DOWN"
+                movement_sent_time = None
                 currently_moving_cmd = None
             elif key == ord('e'):
                 cmd_to_send = 'e'
                 status_text = "TURN SPEED UP"
+                movement_sent_time = None
                 currently_moving_cmd = None
             elif key == ord('c'):
                 cmd_to_send = 'c'
                 status_text = "TURN SPEED DOWN"
+                movement_sent_time = None
                 currently_moving_cmd = None
             elif key == ord('h'):
                 cmd_to_send = 'h'
                 status_text = "RESET (Speeds -> 10)"
+                movement_sent_time = None
                 currently_moving_cmd = None
             
             # --- STOP & QUIT ---
             elif key == ord(' ') or key == ord('x'):
                 cmd_to_send = 'x'
                 status_text = "STOP (one-time)"
+                movement_sent_time = None
                 currently_moving_cmd = None
             elif key == 27:  # ESC key
                 # SAFETY: Always stop robot before quitting application
