@@ -18,10 +18,10 @@
  * ┌─────────────┬──────────┬──────────┬────────────────────────┐
  * │ Motor       │ PWM Pin  │ DIR Pin  │ SPEED Feedback Pin     │
  * ├─────────────┼──────────┼──────────┼────────────────────────┤
- * │ Right Front │ Pin 3    │ Pin 4    │ Pin 2 (INT0 - hardware)│
- * │ Left Front  │ Pin 5    │ Pin 7    │ Pin A0 (polled)        │
- * │ Right Back  │ Pin 6    │ Pin 8    │ Pin A1 (polled)        │
- * │ Left Back   │ Pin 9    │ Pin 12   │ Pin A2 (polled)        │
+ * │ Right Front │ Pin 3    │ Pin 4    │ Pin A0 (polled)        │
+ * │ Left Front  │ Pin 5    │ Pin 7    │ Pin A1 (polled)        │
+ * │ Right Back  │ Pin 6    │ Pin 8    │ Pin A2 (polled)        │
+ * │ Left Back   │ Pin 9    │ Pin 12   │ Pin A3 (polled)        │
  * └─────────────┴──────────┴──────────┴────────────────────────┘
  * 
  * JKBLD300 Driver Connections (per motor):
@@ -305,10 +305,10 @@ const int MOTOR_DIR_3 = 8;
 const int MOTOR_DIR_4 = 12;
 
 // SPEED Feedback Pins from JKBLD300 drivers
-const int SPEED_FB_1 = 2;   // Right Front (INT0 - hardware interrupt)
-const int SPEED_FB_2 = A0;  // Left Front
-const int SPEED_FB_3 = A1;  // Right Back  
-const int SPEED_FB_4 = A2;  // Left Back
+const int SPEED_FB_1 = A0;  // Right Front
+const int SPEED_FB_2 = A1;  // Left Front
+const int SPEED_FB_3 = A2;  // Right Back  
+const int SPEED_FB_4 = A3;  // Left Back
 
 // Grouping Arrays
 const int PWM_PINS[] = { MOTOR_PWM_1, MOTOR_PWM_2, MOTOR_PWM_3, MOTOR_PWM_4 };
@@ -809,9 +809,6 @@ void setup() {
   for (int i = 0; i < MOTOR_COUNT; i++) {
     pinMode(SPEED_FB_PINS[i], INPUT);
   }
-  
-  // Attach interrupt for Motor 0
-  attachInterrupt(digitalPinToInterrupt(SPEED_FB_1), speedISR_0, RISING);
   
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);

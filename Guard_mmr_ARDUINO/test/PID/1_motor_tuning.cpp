@@ -47,7 +47,7 @@
 const int LED_PIN = 13;
 const int MOTOR_PWM = 6;        // PWM output to JKBLD300
 const int MOTOR_DIR = 8;        // Direction output to JKBLD300
-const int SPEED_FB = A2;         // SPEED feedback from JKBLD300 (INT0)
+const int SPEED_FB = 2;         // SPEED feedback from JKBLD300 (INT0)
 
 // ===== Hardware Constants =====
 const float POLE_PAIRS = 4.0f;           // 86BLF: 8 poles = 4 pole pairs
