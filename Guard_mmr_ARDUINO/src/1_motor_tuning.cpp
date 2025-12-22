@@ -15,7 +15,7 @@
  * Wiring (Motor 0):
  * - PWM: Arduino Pin 3 → JKBLD300 PWM input
  * - DIR: Arduino Pin 4 → JKBLD300 DIR input
- * - SPEED: JKBLD300 SPEED output → Arduino Pin 2 (INT0)
+ * - SPEED: JKBLD300 SPEED output → Arduino Pin A2
  * - GND: Common ground between Arduino and JKBLD300
  * 
  * Testing Procedure:
@@ -43,11 +43,11 @@
 
 #include <Arduino.h>
 
-// ===== Pin Configuration =====
+// ===== Pin Configuration =====r
 const int LED_PIN = 13;
 const int MOTOR_PWM = 6;        // PWM output to JKBLD300
 const int MOTOR_DIR = 8;        // Direction output to JKBLD300
-const int SPEED_FB = A1;         // SPEED feedback from JKBLD300 (INT0)
+const int SPEED_FB = A2;         // SPEED feedback from JKBLD300 (INT0)
 
 // ===== Hardware Constants =====
 const float POLE_PAIRS = 4.0f;           // 86BLF: 8 poles = 4 pole pairs
@@ -402,7 +402,7 @@ void setup() {
   Serial.println("Wiring:");
   Serial.println("  PWM:   Pin 3  → JKBLD300 PWM");
   Serial.println("  DIR:   Pin 4  → JKBLD300 DIR");
-  Serial.println("  SPEED: Pin 2  ← JKBLD300 SPEED");
+  Serial.println("  SPEED: Pin A2 ← JKBLD300 SPEED");
   Serial.println("  GND:   Common ground (CRITICAL!)");
   Serial.println();
   Serial.println("Commands:");
