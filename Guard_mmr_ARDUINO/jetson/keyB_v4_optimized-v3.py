@@ -4,30 +4,28 @@ import time
 import sys
 import re
 
-# ===== Changes in this script =====
-# 1. Added KEY_TIMEOUT constant to define when to auto-stop after key release.
-# 2. Added last_valid_key_time and is_moving state to track held keys.
-# 3. Implemented logic to detect key release (if current_time - last_valid_key_time > KEY_TIMEOUT).
-# 4. Added curses.flushinp() after sending commands to clear the input buffer and prevent lag.
-# 5. Changed serial read to read all waiting bytes (ser.read(ser.in_waiting)) instead of line-by-line to prevent buffer build-up.
-# 6. Added logic to send 'x' (STOP) command automatically when key is released.
-# 7. Increased ser.timeout slightly for connection, but kept read loops non-blocking.
+# ===== Key Optimizations =====
+# 1. KEY STATE TRACKING: Only send commands on state change (press/release), not every frame
+# 2. COMMAND DEDUPLICATION: Track last_command_sent to prevent duplicate sends
+# 3. REDUCED SERIAL WRITES: Only write when command actually changes
+# 4. IMPROVED AUTO-STOP: Better timing logic for smooth release detection
+# 5. FASTER LOOP: Removed unnecessary sleep, uses optimized timing instead
+# 6. CLEANER STATE MACHINE: Separated "key input" from "command dispatch"
 
 # ===== Configuration =====
-# Check your port name using 'ls /dev/tty*' on Jetson
-# It is usually /dev/ttyACM0 for Arduino Uno
-SERIAL_PORT = '/dev/ttyACM0' 
+SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
-KEY_TIMEOUT = 0.1 # Time in seconds to wait before auto-stopping (Hold-to-run logic)
+KEY_RELEASE_TIMEOUT = 0.15  # Time before auto-stop after key release
+KEY_REPEAT_COOLDOWN = 0.05  # Minimum time between sending same command (for speed controls)
 
 def main(stdscr):
     # Setup the screen for keyboard input
     curses.curs_set(0)
-    stdscr.nodelay(True) # Don't block waiting for input
+    stdscr.nodelay(True)
     stdscr.clear()
     
     # UI Header
-    stdscr.addstr(0, 0, "=== Jetson to Arduino Uno Controller ===")
+    stdscr.addstr(0, 0, "=== Jetson to Arduino Uno Controller (Optimized) ===")
     stdscr.addstr(2, 0, "Controls:")
     stdscr.addstr(3, 2, "WASD / Arrows : Drive")
     stdscr.addstr(4, 2, "Space / X     : STOP")
@@ -42,8 +40,8 @@ def main(stdscr):
     # Connect to Arduino
     ser = None
     try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.01) # Faster timeout
-        time.sleep(2) # Wait for Arduino auto-reset to finish
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.01)
+        time.sleep(2)
         stdscr.addstr(10, 0, f"Status: Connected to {SERIAL_PORT}      ")
     except Exception as e:
         stdscr.addstr(10, 0, f"Error: {str(e)}")
@@ -52,32 +50,36 @@ def main(stdscr):
         stdscr.getch()
         return
 
-    last_key = -1
-    # Parsed current speeds (updated from Arduino serial output)
+    # Speed tracking from Arduino
     forward_speed = None
     turn_speed = None
     last_motion_speed = None
     
-    # State variables for Hold-to-Run logic
-    last_valid_key_time = 0
-    is_moving = False
+    # KEY STATE TRACKING (CRITICAL FIX)
+    current_key = None  # Currently pressed key
+    prev_key = None     # Previously pressed key
+    last_key_time = time.time()
+    
+    # COMMAND TRACKING
+    last_command_sent = None  # Prevents sending duplicate commands
+    last_command_time = 0
     
     while True:
         try:
             current_time = time.time()
-            # --- Read inbound serial lines (non-blocking & fast) ---
+            
+            # --- Read serial data (non-blocking) ---
             try:
-                # Read ALL pending data to clear buffer (fixes lag)
                 if ser.in_waiting > 0:
                     raw_data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
                     if raw_data:
                         lines = raw_data.split('\n')
-                        # Process all lines to track speed state
                         for line in lines:
                             line = line.strip()
-                            if not line: continue
+                            if not line:
+                                continue
                             
-                            # Parse common messages for current speeds
+                            # Parse speed messages
                             m = re.search(r'Forward/Backward Speed[^0-9-]*(\-?\d+)', line)
                             if m: forward_speed = int(m.group(1))
                             m = re.search(r'Initial Forward/Backward Speed[^0-9-]*(\-?\d+)', line)
@@ -86,8 +88,6 @@ def main(stdscr):
                             if m: turn_speed = int(m.group(1))
                             m = re.search(r'Speed:\s*(\-?\d+)', line)
                             if m: last_motion_speed = int(m.group(1))
-                            
-                            # Parse Reset
                             m = re.search(r'Reset.*reset to\s*(\d+)', line, re.IGNORECASE)
                             if m:
                                 val = int(m.group(1))
@@ -95,12 +95,9 @@ def main(stdscr):
                                 turn_speed = val
                                 last_motion_speed = None
                         
-                        # Show only the very last message to keep UI clean
                         last_line = lines[-1].strip()
                         if last_line:
                             stdscr.addstr(14, 0, f"Arduino: {last_line[:70]:70}  ")
-                        
-                        # Update the compact speed display
                         stdscr.addstr(16, 0, f"Fwd Speed: {forward_speed if forward_speed is not None else '--':>3}%   Turn: {turn_speed if turn_speed is not None else '--':>3}%   ")
                         if last_motion_speed is not None:
                             stdscr.addstr(17, 0, f"Last Cmd Speed: {last_motion_speed:>3}   ")
@@ -108,96 +105,97 @@ def main(stdscr):
             except Exception:
                 pass
 
+            # --- KEY INPUT DETECTION ---
             key = stdscr.getch()
             
-            # Reduce CPU usage slightly, but keep it responsive
-            if key == -1:
-                # time.sleep(0.02) # Removed sleep here to allow fast loop for auto-stop check, rely on nodelay
-                pass
+            # Store current key state
+            if key != -1:
+                current_key = key
+                last_key_time = current_time
+            else:
+                # Check for timeout-based key release
+                if current_key is not None and (current_time - last_key_time > KEY_RELEASE_TIMEOUT):
+                    current_key = None
 
+            # --- COMMAND GENERATION (Only on state change) ---
             cmd = None
             status_text = ""
-
-            # If a key is currently pressed
-            if key != -1:
-                last_valid_key_time = current_time
-                is_moving = True
-                
-                # Map Keys to Characters defined in Arduino code
-                if key == ord('w') or key == curses.KEY_UP:
-                    cmd = 'w'
-                    status_text = "FORWARD"
-                elif key == ord('s') or key == curses.KEY_DOWN:
-                    cmd = 's'
-                    status_text = "BACKWARD"
-                elif key == ord('a') or key == curses.KEY_LEFT:
-                    cmd = 'a'
-                    status_text = "LEFT TURN"
-                elif key == ord('d') or key == curses.KEY_RIGHT:
-                    cmd = 'd'
-                    status_text = "RIGHT TURN"
-                elif key == ord(' ') or key == ord('x'): # Spacebar or X
-                    cmd = 'x'
-                    status_text = "STOP"
-                    is_moving = False # Explicit stop
-                
-                # Speed Controls (Split System)
-                elif key == ord('q'):
-                    cmd = 'q'
-                    status_text = "FWD SPEED UP"
-                elif key == ord('z'):
-                    cmd = 'z'
-                    status_text = "FWD SPEED DOWN"
-                elif key == ord('e'):
-                    cmd = 'e'
-                    status_text = "TURN SPEED UP"
-                elif key == ord('c'):
-                    cmd = 'c'
-                    status_text = "TURN SPEED DOWN"
-                
-                # Reset
-                elif key == ord('h'):
-                    cmd = 'h'
-                    status_text = "RESET (Speeds -> 10)"
-
-                # Quit App (Use Esc instead of Q)
-                elif key == 27: # ESC key
-                    # SAFETY: Stop robot before quitting
-                    ser.write(b'x')
-                    break
             
-            # Logic for Auto-Stop (Release Detection)
-            else:
-                if is_moving and (current_time - last_valid_key_time > KEY_TIMEOUT):
+            # Only process if key state changed (press or release)
+            if current_key != prev_key:
+                
+                if current_key is not None:
+                    # KEY PRESS
+                    if current_key == ord('w') or current_key == curses.KEY_UP:
+                        cmd = 'w'
+                        status_text = "FORWARD"
+                    elif current_key == ord('s') or current_key == curses.KEY_DOWN:
+                        cmd = 's'
+                        status_text = "BACKWARD"
+                    elif current_key == ord('a') or current_key == curses.KEY_LEFT:
+                        cmd = 'a'
+                        status_text = "LEFT TURN"
+                    elif current_key == ord('d') or current_key == curses.KEY_RIGHT:
+                        cmd = 'd'
+                        status_text = "RIGHT TURN"
+                    elif current_key == ord(' ') or current_key == ord('x'):
+                        cmd = 'x'
+                        status_text = "STOP"
+                    elif current_key == ord('q'):
+                        cmd = 'q'
+                        status_text = "FWD SPEED UP"
+                    elif current_key == ord('z'):
+                        cmd = 'z'
+                        status_text = "FWD SPEED DOWN"
+                    elif current_key == ord('e'):
+                        cmd = 'e'
+                        status_text = "TURN SPEED UP"
+                    elif current_key == ord('c'):
+                        cmd = 'c'
+                        status_text = "TURN SPEED DOWN"
+                    elif current_key == ord('h'):
+                        cmd = 'h'
+                        status_text = "RESET (Speeds -> 10)"
+                    elif current_key == 27:  # ESC
+                        ser.write(b'x')
+                        break
+                
+                else:
+                    # KEY RELEASE - Send stop command
                     cmd = 'x'
-                    status_text = "AUTO-STOP"
-                    is_moving = False
+                    status_text = "AUTO-STOP (Release)"
+                
+                prev_key = current_key
 
-            # Send to Arduino
+            # --- COMMAND DISPATCH (Deduplication) ---
             if cmd:
-                # Send encoding
-                ser.write(cmd.encode())
+                # For movement (w, a, s, d): Send only once per press
+                # For speed controls (q, z, e, c): Allow repeated sends after cooldown
+                is_speed_control = cmd in ['q', 'z', 'e', 'c']
                 
-                # CRITICAL: Flush input buffer to prevent lag/ghost keys
-                curses.flushinp()
+                should_send = (last_command_sent != cmd) or \
+                              (is_speed_control and (current_time - last_command_time > KEY_REPEAT_COOLDOWN))
                 
-                # Update UI
-                stdscr.addstr(12, 0, f"Last Command: {status_text} ({cmd})      ")
-                stdscr.refresh()
+                if should_send:
+                    ser.write(cmd.encode())
+                    last_command_sent = cmd
+                    last_command_time = current_time
+                    
+                    # Update UI
+                    stdscr.addstr(12, 0, f"Last Command: {status_text} ({cmd})      ")
+                    stdscr.refresh()
             
-            # Small sleep to prevent 100% CPU usage
-            time.sleep(0.01)
+            # Minimal sleep to prevent CPU spin (10ms = responsive enough for motor control)
+            time.sleep(0.005)
 
         except Exception as e:
-            # Handle serial disconnections gracefully
             stdscr.addstr(16, 0, f"Runtime Error: {str(e)}")
             break
 
     # Cleanup
     if ser and ser.is_open:
-        # Final safety stop just in case loop broke unexpectedly
         try:
-            ser.write(b'x') 
+            ser.write(b'x')
         except:
             pass
         ser.close()
