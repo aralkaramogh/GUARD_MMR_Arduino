@@ -46,8 +46,8 @@ const int MOTOR_COUNT = 4;
 int motorDuty[] = { 0, 0, 0, 0 }; // M1(RF), M2(LF), M3(RB), M4(LB)
 
 // Speed settings for normal operation
-int forwardBackwardSpeed = 50;  // % (0-100)
-int turningSpeed = 50;          // %
+int forwardBackwardSpeed = 20;  // % (0-100)
+int turningSpeed = 80;          // %
 int turnRatioPercent = 50;      // % PWM for turning inner wheels (adjustable for tuning)
 
 const int FORWARD_BACKWARD_CAP = 100;
@@ -333,5 +333,4 @@ void loop() {
       default:
         break;
     }
-  }
 }
