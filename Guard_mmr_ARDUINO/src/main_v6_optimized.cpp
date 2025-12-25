@@ -45,7 +45,7 @@ int forwardBackwardSpeed = 10;  // Desired forward/backward speed (serial-adjust
 int turningSpeed = 10;          // Desired turning speed (serial-adjustable)
 
 // Non-serial-adjustable caps (safety/limit). Change these constants in code only.
-const int FORWARD_BACKWARD_CAP = 40; // max allowed forward/backward percent
+const int FORWARD_BACKWARD_CAP = 25; // max allowed forward/backward percent
 const int TURNING_CAP = 100;         // max allowed turning percent
 
 // ===== Helpers =====
