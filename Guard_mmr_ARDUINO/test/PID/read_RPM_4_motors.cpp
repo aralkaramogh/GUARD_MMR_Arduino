@@ -1,16 +1,16 @@
 /**
  * ============================================================================
- * RPM READER - 4 MOTOR SPEED MONITOR (OPTIMIZED FOR UNO)
+ * RPM READER - 4 MOTOR SPEED MONITOR (ARDUINO MEGA)
  * ============================================================================
  * 
- * Memory-optimized version for Arduino Uno (2KB RAM limit)
  * This code reads and displays RPM from 4 JKBLD300 SPEED outputs.
+ * Optimized for Arduino Mega with digital pins.
  * 
  * Wiring:
- *   Motor 1 SPEED → Arduino Pin A0 (Analog 0)
- *   Motor 2 SPEED → Arduino Pin A1 (Analog 1)
- *   Motor 3 SPEED → Arduino Pin A2 (Analog 2)
- *   Motor 4 SPEED → Arduino Pin A3 (Analog 3)
+ *   Motor 1 SPEED → Arduino Pin 50 (Digital)
+ *   Motor 2 SPEED → Arduino Pin 51 (Digital)
+ *   Motor 3 SPEED → Arduino Pin 52 (Digital)
+ *   Motor 4 SPEED → Arduino Pin 53 (Digital)
  *   All JKBLD300 GND → Arduino GND (CRITICAL!)
  * 
  * Commands: M=Status, V=Toggle, R=Reset, S=Stats, H=Help
@@ -20,7 +20,7 @@
 #include <Arduino.h>
 
 // ===== Pin Configuration =====
-const int SPEED_FB[4] = {A0, A1, A2, A3};
+const int SPEED_FB[4] = {50, 51, 52, 53};
 const int LED_PIN = 13;
 const int NUM_MOTORS = 4;
 

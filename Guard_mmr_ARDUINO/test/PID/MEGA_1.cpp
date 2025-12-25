@@ -1,46 +1,27 @@
 /**
  * ============================================================================
- * ARDUINO MEGA - 4WD AMR PID CONTROLLER WITH BRAKE
+ * ARDUINO MEGA - 4WD AMR PID CONTROLLER
  * ============================================================================
  * 
- * Full documentation from previous version maintained in header
- * See lines 7-186 for complete usage guide, wiring, and tuning instructions
- * 
- * Compatible with: Arduino Uno, Arduino Mega
- * Pin definitions unchanged - directly portable from Uno code
- * 
- * NEW FEATURE: Brake Pin Control (Per Motor)
- * - When stopped: All BRAKE pins = HIGH (motors hold position)
- * - When running: All BRAKE pins = LOW (motors free to spin)
- * - Emergency stop: Immediate brake engagement
- * - Prevents robot drift on slopes
+ * Compatible with: Arduino Mega
  * 
  * Hardware:
- * - Arduino Mega/Uno
+ * - Arduino Mega
  * - 4x JKBLD300 V2 drivers
  * - 4x 86BLF BLDC motors
  * - 16:1 Gearbox
  * 
- * Wiring Updates:
- * ┌──────────────┬─────┬─────┬───────┬───────┬────────────┐
- * │ Motor        │ PWM │ DIR │ BRAKE │ SPEED │ Notes      │
- * ├──────────────┼─────┼─────┼───────┼───────┼────────────┤
- * │ Right Front  │ 3   │ 4   │ 44    │ 2     │ INT0       │
- * │ Left Front   │ 5   │ 7   │ 45    │ A0    │ Polled     │
- * │ Right Back   │ 6   │ 8   │ 46    │ A1    │ Polled     │
- * │ Left Back    │ 9   │ 12  │ 47    │ A2    │ Polled     │
- * └──────────────┴─────┴─────┴───────┴───────┴────────────┘
+ * Wiring:
+ * ┌──────────────┬─────┬─────┬───────┬───────────────┐
+ * │ Motor        │ PWM │ DIR │ SPEED │ Notes         │
+ * ├──────────────┼─────┼─────┼───────┼───────────────┤
+ * │ Right Front  │ 3   │ 4   │ 50    │               │
+ * │ Left Front   │ 5   │ 7   │ 51    │               │
+ * │ Right Back   │ 6   │ 8   │ 52    │               │
+ * │ Left Back    │ 9   │ 12  │ 53    │               │
+ * └──────────────┴─────┴─────┴───────┴───────────────┘
  * 
- * Brake pins use digital pins 44-47 (Mega only) or any available pins
- * For Uno: Use pins 10, 11, A3, A4 as brake pins
- * 
- * Commands: All previous commands plus:
- * - B : Toggle brake (manual control)
- * - X/Space : Stop all motors with brake
- * 
- * Memory Usage:
- * - Uno:  ~1.9KB RAM (tight but works)
- * - Mega: ~1.9KB RAM (plenty of headroom)
+ * Commands: W/S/A/D (move), X (stop), M (status), P/I/D/T/F (tune), G (CSV)
  * 
  * ============================================================================
  */
@@ -62,20 +43,6 @@ const int MOTOR_DIR_2 = 7;
 const int MOTOR_DIR_3 = 8;
 const int MOTOR_DIR_4 = 12;
 
-// BRAKE Pins (NEW - Use Mega pins or adapt for Uno)
-#ifdef ARDUINO_AVR_MEGA2560
-const int MOTOR_BRAKE_1 = 44;  // Right Front
-const int MOTOR_BRAKE_2 = 45;  // Left Front
-const int MOTOR_BRAKE_3 = 46;  // Right Back
-const int MOTOR_BRAKE_4 = 47;  // Left Back
-#else
-// Uno alternative pins
-const int MOTOR_BRAKE_1 = 10;
-const int MOTOR_BRAKE_2 = 11;
-const int MOTOR_BRAKE_3 = A3;
-const int MOTOR_BRAKE_4 = A4;
-#endif
-
 // SPEED Feedback Pins
 const int SPEED_FB_1 = 50;  // Right Front
 const int SPEED_FB_2 = 51;  // Left Front
@@ -85,7 +52,6 @@ const int SPEED_FB_4 = 53;  // Left Back
 // Grouping Arrays
 const int PWM_PINS[] = { MOTOR_PWM_1, MOTOR_PWM_2, MOTOR_PWM_3, MOTOR_PWM_4 };
 const int DIR_PINS[] = { MOTOR_DIR_1, MOTOR_DIR_2, MOTOR_DIR_3, MOTOR_DIR_4 };
-const int BRAKE_PINS[] = { MOTOR_BRAKE_1, MOTOR_BRAKE_2, MOTOR_BRAKE_3, MOTOR_BRAKE_4 };
 const int SPEED_FB_PINS[] = { SPEED_FB_1, SPEED_FB_2, SPEED_FB_3, SPEED_FB_4 };
 
 // Motor configuration
@@ -147,7 +113,6 @@ const int TURNING_CAP = 100;
 bool pidEnabled = true;
 bool continuousPrint = false;
 bool csvMode = false;
-bool isBraking = true;  // Start with brakes engaged
 
 // ===== Speed Feedback ISR =====
 void speedISR_0() {
@@ -163,22 +128,6 @@ float limitFloat(float value, float minVal, float maxVal) {
   return constrain(value, minVal, maxVal);
 }
 
-// ===== Brake Control =====
-void engageBrakes() {
-  for (int i = 0; i < MOTOR_COUNT; i++) {
-    digitalWrite(BRAKE_PINS[i], HIGH);  // All brakes ON
-  }
-  isBraking = true;
-  digitalWrite(LED_PIN, LOW);
-}
-
-void releaseBrakes() {
-  for (int i = 0; i < MOTOR_COUNT; i++) {
-    digitalWrite(BRAKE_PINS[i], LOW);   // All brakes OFF
-  }
-  isBraking = false;
-}
-
 // ===== Motor Control =====
 void setMotorRaw(int index, int pwmValue) {
   if (index < 0 || index >= MOTOR_COUNT) return;
@@ -188,13 +137,9 @@ void setMotorRaw(int index, int pwmValue) {
   if (pwmValue == 0) {
     // Stop this motor
     analogWrite(PWM_PINS[index], 0);
-    digitalWrite(BRAKE_PINS[index], HIGH);
     return;
   }
-  
-  // Release brake for this motor
-  digitalWrite(BRAKE_PINS[index], LOW);
-  
+
   // Set direction
   bool forward = (motorPID[index].setpoint >= 0);
   currentDirection[index] = forward ? 1 : -1;
@@ -307,7 +252,6 @@ float percentToRPM(int percent) {
 }
 
 void forward(int speedPercent) {
-  releaseBrakes();
   speedPercent = constrain(speedPercent, 0, forwardBackwardSpeed);
   speedPercent = min(speedPercent, FORWARD_BACKWARD_CAP);
   
@@ -322,7 +266,6 @@ void forward(int speedPercent) {
 }
 
 void backward(int speedPercent) {
-  releaseBrakes();
   speedPercent = constrain(speedPercent, 0, forwardBackwardSpeed);
   speedPercent = min(speedPercent, FORWARD_BACKWARD_CAP);
   
@@ -337,7 +280,6 @@ void backward(int speedPercent) {
 }
 
 void turnRight(int speedPercent) {
-  releaseBrakes();
   speedPercent = constrain(speedPercent, 0, turningSpeed);
   speedPercent = min(speedPercent, TURNING_CAP);
   
@@ -351,7 +293,6 @@ void turnRight(int speedPercent) {
 }
 
 void turnLeft(int speedPercent) {
-  releaseBrakes();
   speedPercent = constrain(speedPercent, 0, turningSpeed);
   speedPercent = min(speedPercent, TURNING_CAP);
   
@@ -372,9 +313,7 @@ void stopAll() {
     analogWrite(PWM_PINS[i], 0);
   }
   
-  engageBrakes();
-  
-  if (!csvMode) Serial.println("STOP (Brakes engaged)");
+  if (!csvMode) Serial.println("STOP");
 }
 
 void resetControl() {
@@ -412,7 +351,6 @@ void printStatus() {
   } else {
     Serial.println("\n=== Motor Status ===");
     Serial.print("PID: "); Serial.println(pidEnabled ? "ON" : "OFF");
-    Serial.print("Brake: "); Serial.println(isBraking ? "ENGAGED" : "RELEASED");
     Serial.print("Gains - Kp:"); Serial.print(motorPID[0].kp, 2);
     Serial.print(" Ki:"); Serial.print(motorPID[0].ki, 2);
     Serial.print(" Kd:"); Serial.println(motorPID[0].kd, 3);
@@ -531,15 +469,6 @@ void processSerialCommand() {
         Serial.print("CSV Mode: ");
         Serial.println(csvMode ? "ON" : "OFF");
         break;
-      case 'b': case 'B':
-        if (isBraking) {
-          releaseBrakes();
-          Serial.println("Brakes RELEASED");
-        } else {
-          stopAll();
-          Serial.println("Brakes ENGAGED");
-        }
-        break;
     }
   }
 }
@@ -553,10 +482,8 @@ void setup() {
   for (int i = 0; i < MOTOR_COUNT; i++) {
     pinMode(PWM_PINS[i], OUTPUT);
     pinMode(DIR_PINS[i], OUTPUT);
-    pinMode(BRAKE_PINS[i], OUTPUT);
     analogWrite(PWM_PINS[i], 0);
     digitalWrite(DIR_PINS[i], LOW);
-    digitalWrite(BRAKE_PINS[i], HIGH);  // Start with brakes engaged
   }
   
   // Configure SPEED pins
@@ -574,24 +501,12 @@ void setup() {
   lastPrint = millis();
   
   Serial.println("\n=== Arduino Mega - 4WD PID Controller ===");
-  #ifdef ARDUINO_AVR_MEGA2560
   Serial.println("Platform: Arduino Mega 2560");
-  Serial.println("Brake Pins: 44, 45, 46, 47");
-  #else
-  Serial.println("Platform: Arduino Uno");
-  Serial.println("Brake Pins: 10, 11, A3, A4");
-  #endif
-  Serial.println("Pin Layout: UNCHANGED from Uno code");
-  Serial.println("\nNEW: Brake Control (Per Motor)");
-  Serial.println("  HIGH = Motor locked");
-  Serial.println("  LOW = Motor free");
-  Serial.println("\nCommands: W/S/A/D (move), X (stop+brake)");
-  Serial.println("          B (brake toggle), M (status)");
+  Serial.println("\nCommands: W/S/A/D (move), X (stop), M (status)");
   Serial.println("          P/I/D/T/F (tune), G (CSV mode)");
   Serial.print("\nInitial PID: Kp="); Serial.print(motorPID[0].kp, 2);
   Serial.print(" Ki="); Serial.print(motorPID[0].ki, 2);
   Serial.print(" Kd="); Serial.println(motorPID[0].kd, 3);
-  Serial.println("\nAll brakes: ENGAGED");
   Serial.println("Ready!\n");
 }
 
