@@ -4,19 +4,17 @@ import time
 import sys
 import re
 
-# ===== Key Optimizations =====
-# 1. KEY STATE TRACKING: Only send commands on state change (press/release), not every frame
-# 2. COMMAND DEDUPLICATION: Track last_command_sent to prevent duplicate sends
-# 3. REDUCED SERIAL WRITES: Only write when command actually changes
-# 4. IMPROVED AUTO-STOP: Better timing logic for smooth release detection
-# 5. FASTER LOOP: Removed unnecessary sleep, uses optimized timing instead
-# 6. CLEANER STATE MACHINE: Separated "key input" from "command dispatch"
+# ===== CRITICAL FIX =====
+# Root cause: Curses nodelay(True) returns a key ONCE when pressed, then -1 on holds.
+# Previous timeout-based release was killing the motor after 0.15s of held key.
+# 
+# NEW APPROACH: Keep REPEATING the last command continuously until a NEW key is pressed.
+# This makes the motor spin smoothly as long as the key is held, matching user expectation.
 
 # ===== Configuration =====
 SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
-KEY_RELEASE_TIMEOUT = 0.15  # Time before auto-stop after key release
-KEY_REPEAT_COOLDOWN = 0.05  # Minimum time between sending same command (for speed controls)
+COMMAND_REPEAT_RATE = 0.05  # Send same command every 50ms to keep motor running
 
 def main(stdscr):
     # Setup the screen for keyboard input
@@ -25,7 +23,7 @@ def main(stdscr):
     stdscr.clear()
     
     # UI Header
-    stdscr.addstr(0, 0, "=== Jetson to Arduino Uno Controller (Optimized) ===")
+    stdscr.addstr(0, 0, "=== Jetson to Arduino Uno Controller (Fixed) ===")
     stdscr.addstr(2, 0, "Controls:")
     stdscr.addstr(3, 2, "WASD / Arrows : Drive")
     stdscr.addstr(4, 2, "Space / X     : STOP")
@@ -55,14 +53,9 @@ def main(stdscr):
     turn_speed = None
     last_motion_speed = None
     
-    # KEY STATE TRACKING (CRITICAL FIX)
-    current_key = None  # Currently pressed key
-    prev_key = None     # Previously pressed key
-    last_key_time = time.time()
-    
-    # COMMAND TRACKING
-    last_command_sent = None  # Prevents sending duplicate commands
-    last_command_time = 0
+    # CONTINUOUS COMMAND SYSTEM
+    current_command = None  # The command being held (kept repeating)
+    last_sent_time = 0
     
     while True:
         try:
@@ -107,86 +100,70 @@ def main(stdscr):
 
             # --- KEY INPUT DETECTION ---
             key = stdscr.getch()
-            
-            # Store current key state
-            if key != -1:
-                current_key = key
-                last_key_time = current_time
-            else:
-                # Check for timeout-based key release
-                if current_key is not None and (current_time - last_key_time > KEY_RELEASE_TIMEOUT):
-                    current_key = None
-
-            # --- COMMAND GENERATION (Only on state change) ---
-            cmd = None
             status_text = ""
             
-            # Only process if key state changed (press or release)
-            if current_key != prev_key:
+            # Only process when a NEW key is pressed (key != -1)
+            if key != -1:
+                new_command = None
                 
-                if current_key is not None:
-                    # KEY PRESS
-                    if current_key == ord('w') or current_key == curses.KEY_UP:
-                        cmd = 'w'
-                        status_text = "FORWARD"
-                    elif current_key == ord('s') or current_key == curses.KEY_DOWN:
-                        cmd = 's'
-                        status_text = "BACKWARD"
-                    elif current_key == ord('a') or current_key == curses.KEY_LEFT:
-                        cmd = 'a'
-                        status_text = "LEFT TURN"
-                    elif current_key == ord('d') or current_key == curses.KEY_RIGHT:
-                        cmd = 'd'
-                        status_text = "RIGHT TURN"
-                    elif current_key == ord(' ') or current_key == ord('x'):
-                        cmd = 'x'
-                        status_text = "STOP"
-                    elif current_key == ord('q'):
-                        cmd = 'q'
-                        status_text = "FWD SPEED UP"
-                    elif current_key == ord('z'):
-                        cmd = 'z'
-                        status_text = "FWD SPEED DOWN"
-                    elif current_key == ord('e'):
-                        cmd = 'e'
-                        status_text = "TURN SPEED UP"
-                    elif current_key == ord('c'):
-                        cmd = 'c'
-                        status_text = "TURN SPEED DOWN"
-                    elif current_key == ord('h'):
-                        cmd = 'h'
-                        status_text = "RESET (Speeds -> 10)"
-                    elif current_key == 27:  # ESC
-                        ser.write(b'x')
-                        break
+                # Movement keys
+                if key == ord('w') or key == curses.KEY_UP:
+                    new_command = 'w'
+                    status_text = "FORWARD"
+                elif key == ord('s') or key == curses.KEY_DOWN:
+                    new_command = 's'
+                    status_text = "BACKWARD"
+                elif key == ord('a') or key == curses.KEY_LEFT:
+                    new_command = 'a'
+                    status_text = "LEFT TURN"
+                elif key == ord('d') or key == curses.KEY_RIGHT:
+                    new_command = 'd'
+                    status_text = "RIGHT TURN"
                 
-                else:
-                    # KEY RELEASE - Send stop command
-                    cmd = 'x'
-                    status_text = "AUTO-STOP (Release)"
+                # Stop commands
+                elif key == ord(' ') or key == ord('x'):
+                    new_command = 'x'
+                    status_text = "STOP"
                 
-                prev_key = current_key
-
-            # --- COMMAND DISPATCH (Deduplication) ---
-            if cmd:
-                # For movement (w, a, s, d): Send only once per press
-                # For speed controls (q, z, e, c): Allow repeated sends after cooldown
-                is_speed_control = cmd in ['q', 'z', 'e', 'c']
+                # Speed controls
+                elif key == ord('q'):
+                    new_command = 'q'
+                    status_text = "FWD SPEED UP"
+                elif key == ord('z'):
+                    new_command = 'z'
+                    status_text = "FWD SPEED DOWN"
+                elif key == ord('e'):
+                    new_command = 'e'
+                    status_text = "TURN SPEED UP"
+                elif key == ord('c'):
+                    new_command = 'c'
+                    status_text = "TURN SPEED DOWN"
                 
-                should_send = (last_command_sent != cmd) or \
-                              (is_speed_control and (current_time - last_command_time > KEY_REPEAT_COOLDOWN))
+                # Reset
+                elif key == ord('h'):
+                    new_command = 'h'
+                    status_text = "RESET (Speeds -> 10)"
                 
-                if should_send:
-                    ser.write(cmd.encode())
-                    last_command_sent = cmd
-                    last_command_time = current_time
-                    
-                    # Update UI
-                    stdscr.addstr(12, 0, f"Last Command: {status_text} ({cmd})      ")
+                # Quit
+                elif key == 27:  # ESC
+                    ser.write(b'x')
+                    break
+                
+                # Update current command (ONLY on new key press)
+                if new_command:
+                    current_command = new_command
+                    last_sent_time = 0  # Force immediate send
+                    stdscr.addstr(12, 0, f"Last Command: {status_text} ({new_command})      ")
                     stdscr.refresh()
+
+            # --- CONTINUOUS COMMAND SENDING ---
+            # Keep sending the current command repeatedly (essential for smooth motor control!)
+            if current_command and (current_time - last_sent_time > COMMAND_REPEAT_RATE):
+                ser.write(current_command.encode())
+                last_sent_time = current_time
             
-            # Minimal sleep to prevent CPU spin (10ms = responsive enough for motor control)
-            time.sleep(0.005)
+            # Minimal sleep to prevent CPU spin
+            time.sleep(0.001)
 
         except Exception as e:
             stdscr.addstr(16, 0, f"Runtime Error: {str(e)}")
