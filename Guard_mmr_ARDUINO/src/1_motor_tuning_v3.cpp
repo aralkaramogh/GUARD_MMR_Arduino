@@ -7,10 +7,10 @@
  * Arduino MEGA interrupt pins: 2, 3, 21, 20, 19, 18
  * 
  * Wiring:
- *   Motor 1 SPEED → Pin 2  (INT4)
- *   Motor 2 SPEED → Pin 3  (INT5)
- *   Motor 3 SPEED → Pin 21 (INT0)
- *   Motor 4 SPEED → Pin 20 (INT1)
+ *   Motor 1 SPEED → Pin 21 
+ *   Motor 2 SPEED → Pin 20
+ *   Motor 3 SPEED → Pin 19 
+ *   Motor 4 SPEED → Pin 18 
  *   PWM:   Pins 3, 5, 6, 9   (PWM output - NO CONFLICT, different purpose)
  *   DIR:   Pins 4, 7, 8, 12  (Direction output)
  * 
