@@ -7,7 +7,7 @@
  * Use this to verify wiring, tune PID gains, and understand system behavior.
  * 
  * Hardware:
- * - Arduino Uno
+ * - Arduino MEGA
  * - 1x JKBLD300 V2 driver
  * - 1x 86BLF BLDC motor
  * - 16:1 Gearbox
@@ -15,7 +15,7 @@
  * Wiring (Motor 0):
  * - PWM: Arduino Pin 3 → JKBLD300 PWM input
  * - DIR: Arduino Pin 4 → JKBLD300 DIR input
- * - SPEED: JKBLD300 SPEED output → Arduino Pin A2
+ * - SPEED: JKBLD300 SPEED output → Arduino Pin 50
  * - GND: Common ground between Arduino and JKBLD300
  * 
  * Testing Procedure:
@@ -45,9 +45,9 @@
 
 // ===== Pin Configuration =====r
 const int LED_PIN = 13;
-const int MOTOR_PWM = 6;        // PWM output to JKBLD300
-const int MOTOR_DIR = 8;        // Direction output to JKBLD300
-const int SPEED_FB = 2;         // SPEED feedback from JKBLD300 (INT0)
+const int MOTOR_PWM = 3;        // PWM output to JKBLD300
+const int MOTOR_DIR = 4;        // Direction output to JKBLD300
+const int SPEED_FB = 50;         // SPEED feedback from JKBLD300 (INT0)
 
 // ===== Hardware Constants =====
 const float POLE_PAIRS = 4.0f;           // 86BLF: 8 poles = 4 pole pairs

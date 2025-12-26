@@ -51,7 +51,7 @@ int turningSpeed = 15;         // %
 int turnRatioPercent = 50;     // % PWM for turning inner wheels (adjustable for tuning)
 
 const int FORWARD_BACKWARD_CAP = 20;
-const int TURNING_CAP = 60;
+const int TURNING_CAP = 6 0;
 
 // ===== Helpers =====
 
