@@ -40,10 +40,10 @@ const int MOTOR_DIR_3 = 8;
 const int MOTOR_DIR_4 = 12;
 
 // Speed Feedback Pins
-const int SPEED_FB_1 = 50;
-const int SPEED_FB_2 = 51;
-const int SPEED_FB_3 = 52;
-const int SPEED_FB_4 = 53;
+const int SPEED_FB_1 = 21;
+const int SPEED_FB_2 = 20;
+const int SPEED_FB_3 = 19;
+const int SPEED_FB_4 = 18;
 
 // Grouping Arrays
 const int PWM_PINS[] = { MOTOR_PWM_1, MOTOR_PWM_2, MOTOR_PWM_3, MOTOR_PWM_4 };

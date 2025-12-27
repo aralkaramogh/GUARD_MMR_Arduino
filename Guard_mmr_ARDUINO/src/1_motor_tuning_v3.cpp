@@ -36,10 +36,10 @@
 const int LED_PIN = 13;
 
 // PWM Pins (PWM output - no interrupts)
-const int MOTOR_PWM_1 = 5;
-const int MOTOR_PWM_2 = 6;
-const int MOTOR_PWM_3 = 9;
-const int MOTOR_PWM_4 = 10;
+const int MOTOR_PWM_1 = 3;
+const int MOTOR_PWM_2 = 5;
+const int MOTOR_PWM_3 = 6;
+const int MOTOR_PWM_4 = 9;
 
 // Direction Pins
 const int MOTOR_DIR_1 = 4;
@@ -48,10 +48,10 @@ const int MOTOR_DIR_3 = 8;
 const int MOTOR_DIR_4 = 12;
 
 // Speed Feedback Pins (INTERRUPT PINS ONLY on MEGA)
-const int SPEED_FB_1 = 21;   // INT4
-const int SPEED_FB_2 = 20;   // INT5
-const int SPEED_FB_3 = 19;  // INT0
-const int SPEED_FB_4 = 18;  // INT1
+const int SPEED_FB_1 = 21;
+const int SPEED_FB_2 = 20;
+const int SPEED_FB_3 = 19;
+const int SPEED_FB_4 = 18;
 
 // Grouping Arrays
 const int PWM_PINS[] = { MOTOR_PWM_1, MOTOR_PWM_2, MOTOR_PWM_3, MOTOR_PWM_4 };
